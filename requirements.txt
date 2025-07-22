@@ -1,0 +1,5 @@
+requests[socks]
+beautifulsoup4
+rich
+colorama
+python-whois
