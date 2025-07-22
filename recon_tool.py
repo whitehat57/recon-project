@@ -2,8 +2,11 @@ import argparse
 import requests
 import socket
 import whois
+import os
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
+from shodan_lookup import get_shodan_data
+from fofa_lookup import get_fofa_data
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -173,7 +176,7 @@ def dns_lookup(domain):
     
     return dns_info
 
-def display_results(url, http_data, html_data, dns_data):
+def display_results(url, http_data, html_data, dns_data, shodan_data=None, fofa_data=None):
     """Displays the collected reconnaissance data using Rich."""
     console.print(Panel(f"[bold green]Reconnaissance Report for:[/bold green] [cyan]{url}[/cyan]", expand=False, box=MINIMAL))
 
@@ -210,6 +213,37 @@ def display_results(url, http_data, html_data, dns_data):
     else:
         console.print(Panel("[red]No DNS/WHOIS data found.[/red]", expand=False))
 
+    # Shodan Data
+    if shodan_data:
+        shodan_table = Table(title="[bold magenta]Shodan Data[/bold magenta]", show_header=True, header_style="bold blue")
+        shodan_table.add_column("Category", style="cyan", no_wrap=True)
+        shodan_table.add_column("Value", style="green")
+        for key, value in shodan_data.items():
+            # Limit the length of WHOIS info for better display
+            if key == 'whois' and isinstance(value, dict):
+                for w_key, w_value in value.items():
+                    shodan_table.add_row(f"WHOIS: {w_key}", str(w_value)[:200] + "..." if len(str(w_value)) > 200 else str(w_value))
+            elif isinstance(value, (list, dict)):
+                shodan_table.add_row(key, Text(str(value), overflow="fold"))
+            else:
+                shodan_table.add_row(key, str(value))
+        console.print(shodan_table)
+    else:
+        console.print(Panel("[yellow]No Shodan data retrieved (API key missing or error).[/yellow]", expand=False))
+
+    # FOFA Data
+    if fofa_data and fofa_data.get('results'):
+        fofa_table = Table(title="[bold magenta]FOFA Data[/bold magenta]", show_header=True, header_style="bold blue")
+        fofa_table.add_column("Field", style="cyan", no_wrap=True)
+        fofa_table.add_column("Value", style="green")
+        for result in fofa_data['results']:
+            for key, value in result.items():
+                fofa_table.add_row(key, str(value))
+        console.print(fofa_table)
+    else:
+        console.print(Panel("[yellow]No FOFA data retrieved (API key/email missing or error).[/yellow]", expand=False))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Web Reconnaissance and Tech Stack Fingerprinting Tool")
     parser.add_argument("url", help="The target URL (e.g., https://example.com)")
@@ -217,6 +251,10 @@ def main():
     parser.add_argument("--random-user-agent", action="store_true", help="Use a random User-Agent from a predefined list.")
     parser.add_argument("--proxy", help="Specify a single proxy (e.g., http://host:port or socks5://host:port)")
     parser.add_argument("--proxy-file", help="Path to a file containing a list of proxies (one per line). Prioritized over --proxy.")
+    parser.add_argument("--shodan-api-key", help="Your Shodan API key. Overrides SHODAN_API_KEY environment variable.")
+    parser.add_argument("--fofa-api-key", help="Your FOFA API key. Overrides FOFA_API_KEY environment variable.")
+    parser.add_argument("--fofa-email", help="Your FOFA email. Overrides FOFA_EMAIL environment variable.")
+
 
     args = parser.parse_args()
 
@@ -244,8 +282,6 @@ def main():
                         proxy_list.append(line)
             if proxy_list:
                 console.log(f"[green]Loaded {len(proxy_list)} proxies from {args.proxy_file}[/green]")
-                # For simplicity, we'll just pick one random proxy from the list for the entire run
-                # A more advanced implementation would rotate per request or per retry
                 selected_proxy = random.choice(proxy_list)
                 if selected_proxy.startswith("http://"):
                     proxies = {"http": selected_proxy, "https": selected_proxy}
@@ -279,7 +315,29 @@ def main():
     html_data = html_fingerprint(target_url, headers, proxies)
     dns_data = dns_lookup(domain)
 
-    display_results(target_url, http_data, html_data, dns_data)
+    shodan_data = None
+    fofa_data = None
+
+    # Get IP address from DNS data for Shodan/FOFA lookups
+    ip_for_api_lookup = dns_data.get('IP Address') if dns_data else None
+
+    if ip_for_api_lookup and ip_for_api_lookup != "Could not resolve IP":
+        shodan_api_key = args.shodan_api_key if args.shodan_api_key else os.environ.get('SHODAN_API_KEY')
+        if shodan_api_key:
+            shodan_data = get_shodan_data(ip_for_api_lookup, shodan_api_key)
+        else:
+            console.log("[yellow]Shodan API key not provided via argument or environment variable. Skipping Shodan lookup.[/yellow]")
+
+        fofa_api_key = args.fofa_api_key if args.fofa_api_key else os.environ.get('FOFA_API_KEY')
+        fofa_email = args.fofa_email if args.fofa_email else os.environ.get('FOFA_EMAIL')
+        if fofa_api_key and fofa_email:
+            fofa_data = get_fofa_data(ip_for_api_lookup, fofa_api_key, fofa_email)
+        else:
+            console.log("[yellow]FOFA API key or Email not provided via argument or environment variable. Skipping FOFA lookup.[/yellow]")
+    else:
+        console.log("[yellow]Could not resolve IP address for API lookups. Skipping Shodan and FOFA.[/yellow]")
+
+    display_results(target_url, http_data, html_data, dns_data, shodan_data, fofa_data)
 
 if __name__ == "__main__":
     main()
