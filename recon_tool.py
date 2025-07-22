@@ -12,6 +12,7 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich.box import MINIMAL
+import random
 from colorama import init, Fore, Style
 
 # Initialize Colorama for cross-platform terminal colors
@@ -43,7 +44,6 @@ def get_request_headers(user_agent=None):
     if user_agent:
         headers["User-Agent"] = user_agent
     else:
-        import random
         headers["User-Agent"] = random.choice(USER_AGENTS)
     return headers
 
@@ -62,7 +62,6 @@ def make_request(url, headers, proxies=None, timeout=10, retries=3):
                 console.log(f"[yellow]Attempt {attempt + 1}: Access to {url} forbidden (403). Trying again with different User-Agent/proxy if available.[/yellow]")
                 # For 403, we might want to try a different UA or proxy immediately
                 if attempt < retries - 1:
-                    import random
                     headers["User-Agent"] = random.choice(USER_AGENTS) # Rotate User-Agent
                     if proxies: # If proxies are used, rotate them too (simple rotation for now)
                         proxy_keys = list(proxies.keys())

@@ -1,6 +1,6 @@
 import os
 from rich.console import Console
-from fofa_py import FOFA
+import fofa
 
 console = Console()
 
@@ -19,7 +19,7 @@ def get_fofa_data(ip_address, api_key=None, email=None):
         return None
 
     try:
-        client = FOFA(email, api_key)
+        client = fofa.Client(email, api_key)
         # FOFA query for IP address
         query = f'ip="{ip_address}"'
         # You can specify fields to retrieve, e.g., 'host,ip,port,protocol,title,os,server,banner,header'
