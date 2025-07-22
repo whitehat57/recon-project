@@ -1,6 +1,6 @@
 import os
 from rich.console import Console
-from FOFA_py import FOFA
+from fofa_py import FOFA
 
 console = Console()
 
